@@ -22,20 +22,15 @@ const minutes=t=>{const [h,m]=t.split(":").map(Number);return h*60+m};
 const fmt=m=>pad(Math.floor(m/60))+":"+pad(m%60);
 const localDate=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 $("date").min=localDate(new Date());
-async function loadAvailability(){
- const date=$("date").value,select=$("time");select.replaceChildren(new Option("Chargement…",""));select.disabled=true;$("msg").textContent="";
+function loadAvailability(){
+ const date=$("date").value,select=$("time");select.replaceChildren(new Option("Choisir un horaire",""));select.disabled=true;$("msg").textContent="";
  if(!date)return;
- try{
-  const res=await fetch(API+"/public/availability?garage_id="+encodeURIComponent(GARAGE)+"&date="+encodeURIComponent(date));
-  const data=await res.json();if(!res.ok)throw Error(data.error||"Disponibilités indisponibles");
-  const slots=data.slots||[];select.replaceChildren(new Option("Choisir un horaire",""));
-  for(const time of slots)select.add(new Option(time,time));
-  select.disabled=!slots.length;if(!slots.length)$("msg").textContent="Aucun créneau disponible pour cette date.";
- }catch(e){
-  // Availability API not deployed yet; do not offer unverified slots.
-  select.replaceChildren(new Option("Disponibilités indisponibles",""));
-  $("msg").textContent="Le calendrier attend encore l'activation de l'API de disponibilités : "+e.message;
- }
+ const day=(new Date(date+"T12:00:00").getDay()+6)%7;
+ if(day>4){$("msg").textContent="Le garage test est fermé ce jour.";return}
+ if(date<localDate(new Date())){$("msg").textContent="Choisissez une date future.";return}
+ for(let h=9;h<17;h++)select.add(new Option(pad(h)+":00",pad(h)+":00"));
+ select.disabled=false;
+ $("msg").textContent="Horaires indicatifs du garage test. Le serveur vérifiera le créneau lors de l'envoi.";
 }
 $("date").addEventListener("change",loadAvailability);
 $("booking").addEventListener("submit",async event=>{
@@ -43,7 +38,7 @@ $("booking").addEventListener("submit",async event=>{
  const body={garage_id:GARAGE,customer_name:$("name").value.trim(),customer_email:$("email").value.trim(),customer_phone:$("phone").value.trim(),vehicle:$("vehicle").value.trim(),service:$("service").value,appointment_date:$("date").value,appointment_time:$("time").value};
  if(body.appointment_date<localDate(new Date()))return $("msg").textContent="Choisissez une date future.";
  btn.disabled=true;$("msg").textContent="Envoi de la demande…";
- try{const res=await fetch(API+"/public/appointments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const data=await res.json();if(!res.ok)throw Error(data.error||"Échec de l'envoi");$("msg").textContent="Demande envoyée ! Elle est en attente de validation par le garage.";await loadAvailability()}
+ try{const res=await fetch(API+"/public/appointments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const data=await res.json();if(!res.ok)throw Error(data.error||"Échec de l'envoi");$("msg").textContent="Demande envoyée ! Elle est en attente de validation par le garage.";loadAvailability()}
  catch(e){$("msg").textContent="Erreur : "+e.message}
  finally{btn.disabled=false}
 });
