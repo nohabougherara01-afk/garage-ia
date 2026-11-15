@@ -1,6 +1,6 @@
 // SaaS API (separate Worker; do not overwrite existing garage-admin-api).
 // Bind D1 as DB; set STRIPE_WEBHOOK_SECRET and STRIPE_PRICE_ASSISTANT / STRIPE_PRICE_PREMIUM.
-// Provisioning deliberately requires a separate secure invitation system before customer access.
+// Verified Stripe subscriptions can provision pending garage records. Secure invitations and sign-in are separate steps.
 const cors={"Access-Control-Allow-Origin":"https://nohabougherara01-afk.github.io","Access-Control-Allow-Headers":"Authorization, Content-Type","Access-Control-Allow-Methods":"GET, PUT, POST, OPTIONS","Vary":"Origin"};
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8",...cors,"Cache-Control":"no-store"}});
 const hex=bytes=>[...new Uint8Array(bytes)].map(x=>x.toString(16).padStart(2,"0")).join("");
@@ -27,9 +27,21 @@ export default {async fetch(request,env){
    if(typeof subscriptionId==="string"&&typeof customerId==="string"){
     const priceIds=(obj.items?.data||[]).map(i=>i.price?.id);
     const plan=priceIds.includes(env.STRIPE_PRICE_PREMIUM)?"premium":priceIds.includes(env.STRIPE_PRICE_ASSISTANT)?"assistant":null;
-    // Do not auto-create a garage from untrusted metadata; onboarding/invitations must bind customer IDs securely.
+    // Read the customer from Stripe's authenticated API; never trust browser metadata for access.
+    // If configuration is incomplete, return 503 so Stripe can retry this event.
+    if(!env.STRIPE_SECRET_KEY)return json({error:"Clé API Stripe manquante"},503);
+    const response=await fetch("https://api.stripe.com/v1/customers/"+encodeURIComponent(customerId),{headers:{"Authorization":"Bearer "+env.STRIPE_SECRET_KEY}});
+    if(!response.ok)return json({error:"Client Stripe inaccessible"},503);
+    const customer=await response.json();
+    const email=typeof customer.email==="string"?customer.email.trim().toLowerCase():"";
+    if(!email||email.length>254)return json({error:"Email client Stripe manquant"},503);
     const status=event.type==="customer.subscription.deleted"?"canceled":String(obj.status||"inactive");
-    if(plan)await env.DB.prepare("UPDATE saas_garages SET subscription_status=?,plan=?,stripe_subscription_id=? WHERE stripe_customer_id=?").bind(status,plan,subscriptionId,customerId).run();
+    if(plan){
+     // Customer ID is unique. Never overwrite an existing garage's name or email on updates.
+     const id=crypto.randomUUID();
+     const name=(typeof customer.name==="string"&&customer.name.trim()?customer.name.trim():("Garage "+customerId.slice(-6))).slice(0,120);
+     await env.DB.prepare("INSERT INTO saas_garages(id,name,email,plan,subscription_status,stripe_customer_id,stripe_subscription_id) VALUES(?,?,?,?,?,?,?) ON CONFLICT(stripe_customer_id) DO UPDATE SET plan=excluded.plan,subscription_status=excluded.subscription_status,stripe_subscription_id=excluded.stripe_subscription_id").bind(id,name,email,plan,status,customerId,subscriptionId).run();
+    }
     else if(event.type==="customer.subscription.deleted")await env.DB.prepare("UPDATE saas_garages SET subscription_status='canceled' WHERE stripe_subscription_id=?").bind(subscriptionId).run();
    }
   }
