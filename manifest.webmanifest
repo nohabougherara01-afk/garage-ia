@@ -1,0 +1,17 @@
+{
+  "name": "Garage Horizon — Démonstration",
+  "short_name": "Garage IA",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#09111e",
+  "theme_color": "#09111e",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
