@@ -1,0 +1,1 @@
+window.GARAGE_AI_ENDPOINT = ""; // Adresse HTTPS du Worker Cloudflare après déploiement\n
