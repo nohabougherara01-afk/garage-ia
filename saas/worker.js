@@ -5,7 +5,7 @@ const cors={"Access-Control-Allow-Origin":"https://nohabougherara01-afk.github.i
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8",...cors,"Cache-Control":"no-store"}});
 const hex=bytes=>[...new Uint8Array(bytes)].map(x=>x.toString(16).padStart(2,"0")).join("");
 async function hashToken(token){return hex(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(token)))}
-async function authorized(request,env){const match=/^Bearer ([A-Za-z0-9_-]{32,256})$/.exec(request.headers.get("Authorization")||"");if(!match)return null;const hash=await hashToken(match[1]);return env.DB.prepare("SELECT g.id,g.name,g.plan,g.subscription_status FROM garage_access a JOIN garages g ON g.id=a.garage_id WHERE a.token_hash=?").bind(hash).first()}
+async function authorized(request,env){const match=/^Bearer ([A-Za-z0-9_-]{32,256})$/.exec(request.headers.get("Authorization")||"");if(!match)return null;const hash=await hashToken(match[1]);return env.DB.prepare("SELECT g.id,g.name,g.plan,g.subscription_status FROM garage_access a JOIN saas_garages g ON g.id=a.garage_id WHERE a.token_hash=?").bind(hash).first()}
 function validTime(t){return typeof t==="string"&&/^([01]\d|2[0-3]):[0-5]\d$/.test(t)}
 const mins=t=>Number(t.slice(0,2))*60+Number(t.slice(3,5));
 function validDate(s){if(typeof s!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;const d=new Date(s+"T12:00:00Z");return !Number.isNaN(d.valueOf())&&d.toISOString().slice(0,10)===s}
@@ -29,8 +29,8 @@ export default {async fetch(request,env){
     const plan=priceIds.includes(env.STRIPE_PRICE_PREMIUM)?"premium":priceIds.includes(env.STRIPE_PRICE_ASSISTANT)?"assistant":null;
     // Do not auto-create a garage from untrusted metadata; onboarding/invitations must bind customer IDs securely.
     const status=event.type==="customer.subscription.deleted"?"canceled":String(obj.status||"inactive");
-    if(plan)await env.DB.prepare("UPDATE garages SET subscription_status=?,plan=?,stripe_subscription_id=? WHERE stripe_customer_id=?").bind(status,plan,subscriptionId,customerId).run();
-    else if(event.type==="customer.subscription.deleted")await env.DB.prepare("UPDATE garages SET subscription_status='canceled' WHERE stripe_subscription_id=?").bind(subscriptionId).run();
+    if(plan)await env.DB.prepare("UPDATE saas_garages SET subscription_status=?,plan=?,stripe_subscription_id=? WHERE stripe_customer_id=?").bind(status,plan,subscriptionId,customerId).run();
+    else if(event.type==="customer.subscription.deleted")await env.DB.prepare("UPDATE saas_garages SET subscription_status='canceled' WHERE stripe_subscription_id=?").bind(subscriptionId).run();
    }
   }
   await env.DB.prepare("INSERT OR IGNORE INTO stripe_events(id) VALUES(?)").bind(event.id).run();
