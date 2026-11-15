@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Prendre rendez-vous — Garage Horizon (test)</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#0a1725;color:#eef7ff;font:16px system-ui}header{background:#14283d;padding:20px}main{max-width:720px;margin:35px auto;padding:0 18px}.card{background:#152b41;border:1px solid #36516c;border-radius:14px;padding:24px}h1{margin-top:0}label{display:block;margin:15px 0 6px}input,select{width:100%;padding:12px;background:#091929;color:#fff;border:1px solid #69839a;border-radius:8px;font:inherit}button{padding:13px 18px;margin-top:22px;border:0;border-radius:9px;background:#4bc9f6;color:#061421;font-weight:700;cursor:pointer}button:disabled{opacity:.6;cursor:wait}.muted{color:#b6cadb}.warning{color:#ffdfab}#msg{margin-top:15px;white-space:pre-line}a{color:#4bc9f6}</style></head>
+<body><header><strong>🔧 Garage Horizon · Réservation</strong></header><main><div class="card"><h1>Demander un rendez-vous</h1><p class="warning">Version de test : n'utilisez pas de vraies coordonnées personnelles. Le rendez-vous doit être accepté par le garage avant d'être confirmé.</p>
+<form id="booking">
+<label for="service">Prestation</label><select id="service" required><option value="">Choisir une prestation</option><option>Vidange</option><option>Diagnostic</option><option>Freins</option><option>Pneumatiques</option><option>Révision</option><option>Autre intervention</option></select>
+<label for="date">Date souhaitée</label><input type="date" id="date" required>
+<label for="time">Horaire souhaité</label><select id="time" required disabled><option value="">Choisissez une date</option></select>
+<label for="name">Nom du client (fictif pour le test)</label><input id="name" maxlength="120" required placeholder="Client Test">
+<label for="email">E-mail de test</label><input type="email" id="email" maxlength="200" required placeholder="client-test@example.com">
+<label for="phone">Téléphone de test</label><input type="tel" id="phone" maxlength="30" required placeholder="0000000000">
+<label for="vehicle">Véhicule (fictif pour le test)</label><input id="vehicle" maxlength="120" required placeholder="Renault Clio">
+<button id="submit" type="submit">Envoyer ma demande</button><p id="msg" role="status" aria-live="polite"></p></form>
+</div><p class="muted">La demande reste en attente jusqu'à son acceptation par le garage. Aucun e-mail automatique n'est envoyé dans cette version.</p></main>
+<script>
+const API="https://garage-saas-api.nohabougherara01.workers.dev";
+const GARAGE="3cb3d9d8-8c13-4199-be92-4b0603deeb95";
+const $=id=>document.getElementById(id);
+let schedule=null,blocked=[];
+const pad=n=>String(n).padStart(2,"0");
+const minutes=t=>{const [h,m]=t.split(":").map(Number);return h*60+m};
+const fmt=m=>pad(Math.floor(m/60))+":"+pad(m%60);
+const localDate=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+$("date").min=localDate(new Date());
+async function loadAvailability(){
+ const date=$("date").value,select=$("time");select.replaceChildren(new Option("Chargement…",""));select.disabled=true;$("msg").textContent="";
+ if(!date)return;
+ try{
+  const res=await fetch(API+"/public/availability?garage_id="+encodeURIComponent(GARAGE)+"&date="+encodeURIComponent(date));
+  const data=await res.json();if(!res.ok)throw Error(data.error||"Disponibilités indisponibles");
+  const slots=data.slots||[];select.replaceChildren(new Option("Choisir un horaire",""));
+  for(const time of slots)select.add(new Option(time,time));
+  select.disabled=!slots.length;if(!slots.length)$("msg").textContent="Aucun créneau disponible pour cette date.";
+ }catch(e){
+  // Availability API not deployed yet; do not offer unverified slots.
+  select.replaceChildren(new Option("Disponibilités indisponibles",""));
+  $("msg").textContent="Le calendrier attend encore l'activation de l'API de disponibilités : "+e.message;
+ }
+}
+$("date").addEventListener("change",loadAvailability);
+$("booking").addEventListener("submit",async event=>{
+ event.preventDefault();const btn=$("submit");if(!$("time").value)return;
+ const body={garage_id:GARAGE,customer_name:$("name").value.trim(),customer_email:$("email").value.trim(),customer_phone:$("phone").value.trim(),vehicle:$("vehicle").value.trim(),service:$("service").value,appointment_date:$("date").value,appointment_time:$("time").value};
+ if(body.appointment_date<localDate(new Date()))return $("msg").textContent="Choisissez une date future.";
+ btn.disabled=true;$("msg").textContent="Envoi de la demande…";
+ try{const res=await fetch(API+"/public/appointments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const data=await res.json();if(!res.ok)throw Error(data.error||"Échec de l'envoi");$("msg").textContent="Demande envoyée ! Elle est en attente de validation par le garage.";await loadAvailability()}
+ catch(e){$("msg").textContent="Erreur : "+e.message}
+ finally{btn.disabled=false}
+});
+</script></body></html>
