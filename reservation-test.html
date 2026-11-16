@@ -16,27 +16,37 @@
 const API="https://garage-saas-api.nohabougherara01.workers.dev";
 const GARAGE="3cb3d9d8-8c13-4199-be92-4b0603deeb95";
 const $=id=>document.getElementById(id);
-let schedule=null,blocked=[];
+
 const pad=n=>String(n).padStart(2,"0");
 const minutes=t=>{const [h,m]=t.split(":").map(Number);return h*60+m};
 const fmt=m=>pad(Math.floor(m/60))+":"+pad(m%60);
 const localDate=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 $("date").min=localDate(new Date());
-function loadAvailability(){
- const date=$("date").value,select=$("time"),buttons=$("timeButtons");
- select.replaceChildren(new Option("Choisir un horaire",""));buttons.replaceChildren();
- if(!date){$("msg").textContent="Choisissez une date pour afficher les horaires.";return}
- const day=(new Date(date+"T12:00:00").getDay()+6)%7;
+let availabilityRequest=0;
+async function loadAvailability(){
+ const requestId=++availabilityRequest,date=$("date").value,select=$("time"),buttons=$("timeButtons");
+ select.replaceChildren(new Option("Choisir un horaire",""));buttons.replaceChildren();select.disabled=true;
+ if(!date){$("msg").textContent="Choisissez une date.";return}
  if(date<localDate(new Date())){$("msg").textContent="Choisissez une date future.";return}
- if(day>4){$("msg").textContent="Le garage test est fermé le samedi et le dimanche. Choisissez un jour en semaine.";return}
- for(let h=9;h<17;h++){
-  const time=pad(h)+":00";
-  select.add(new Option(time,time));
-  const b=document.createElement("button");b.type="button";b.textContent=time;
-  b.onclick=()=>{select.value=time;updateSelected()};
-  buttons.append(b);
+ $("msg").textContent="Vérification des disponibilités…";
+ try{
+  const res=await fetch(API+"/public/availability?garage_id="+encodeURIComponent(GARAGE)+"&date="+encodeURIComponent(date),{cache:"no-store"});
+  const data=await res.json();
+  if(!res.ok)throw Error(data.error||"Disponibilités indisponibles");
+  if(requestId!==availabilityRequest||date!==$("date").value)return;
+  const slots=Array.isArray(data.available)?data.available:[];
+  for(const time of slots){
+   if(!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(time))continue;
+   select.add(new Option(time,time));
+   const btn=document.createElement("button");btn.type="button";btn.textContent=time;
+   btn.onclick=()=>{select.value=time;updateSelected()};buttons.append(btn);
+  }
+  select.disabled=!buttons.children.length;
+  $("msg").textContent=buttons.children.length?"Choisissez un créneau disponible. Le garage confirmera votre demande.":"Aucun créneau disponible pour cette date.";
+ }catch(e){
+  if(requestId!==availabilityRequest)return;
+  $("msg").textContent="Impossible de vérifier les disponibilités pour le moment. Réessayez plus tard.";
  }
- $("msg").textContent="Choisissez un horaire dans la liste ou avec les boutons ci-dessus. Horaires indicatifs, vérifiés par le serveur lors de l'envoi.";
 }
 function updateSelected(){
  for(const b of $("timeButtons").querySelectorAll("button"))b.classList.toggle("selected",b.textContent===$("time").value);
@@ -49,7 +59,7 @@ while(first.getDay()===0||first.getDay()===6)first.setDate(first.getDate()+1);
 $("date").value=localDate(first);
 loadAvailability();
 $("booking").addEventListener("submit",async event=>{
- event.preventDefault();const btn=$("submit");if(!$("time").value)return;
+ event.preventDefault();const btn=$("submit");if(!$("time").value||$("time").disabled)return;
  const body={garage_id:GARAGE,customer_name:$("name").value.trim(),customer_email:$("email").value.trim(),customer_phone:$("phone").value.trim(),vehicle:$("vehicle").value.trim(),service:$("service").value,appointment_date:$("date").value,appointment_time:$("time").value};
  if(body.appointment_date<localDate(new Date()))return $("msg").textContent="Choisissez une date future.";
  btn.disabled=true;$("msg").textContent="Envoi de la demande…";
