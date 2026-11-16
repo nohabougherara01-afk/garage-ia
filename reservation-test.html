@@ -36,7 +36,7 @@ async function loadAvailability(){
   if(requestId!==availabilityRequest||date!==$("date").value)return;
   const slots=Array.isArray(data.available)?data.available:[];
   for(const time of slots){
-   if(!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(time))continue;
+   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))continue;
    select.add(new Option(time,time));
    const btn=document.createElement("button");btn.type="button";btn.textContent=time;
    btn.onclick=()=>{select.value=time;updateSelected()};buttons.append(btn);
