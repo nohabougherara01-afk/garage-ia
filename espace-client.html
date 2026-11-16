@@ -74,20 +74,27 @@ function renderDayAgenda(){
  const date=$("date").value,box=$("agendaView");box.replaceChildren();
  const d=new Date(date+"T12:00:00");
  $("agendaTitle").textContent="Planning du "+(Number.isNaN(d.valueOf())?date:d.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"}));
- if(!schedule||!date)return;
- const rows=appointments.filter(a=>String(a.appointment_date||"").slice(0,10)===date&&["accepted","pending"].includes(String(a.status||"").toLowerCase())&&typeof a.appointment_time==="string"&&Number.isFinite(mins(a.appointment_time)));
- const start=mins(schedule.start),end=mins(schedule.end);
- if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start){box.textContent="Horaires non configurés.";return}
+ if(!date||!schedule){box.textContent="Planning en cours de chargement.";return}
+ const sameDay=appointments.filter(a=>String(a.appointment_date||"").slice(0,10)===date);
+ const rows=sameDay.filter(a=>["accepted","pending"].includes(String(a.status||"").trim().toLowerCase()));
+ const note=document.createElement("p");note.className="muted";note.style.fontSize="13px";
+ note.textContent=rows.length+" rendez-vous confirmé(s) ou en attente pour cette journée ("+sameDay.length+" demandes au total).";
+ box.append(note);
+ const start=mins(String(schedule.start||"09:00")),end=mins(String(schedule.end||"17:00"));
+ if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start){box.append(document.createTextNode("Horaires du garage invalides."));return}
  const timeline=document.createElement("div");timeline.className="agenda-timeline";
- const pxPerMinute=1;
- timeline.style.height=((end-start)*pxPerMinute)+"px";
+ timeline.style.height=(end-start)+"px";
  for(let t=Math.ceil(start/60)*60;t<=end;t+=60){
-  const label=document.createElement("div");label.className="agenda-hour";label.style.top=((t-start)*pxPerMinute)+"px";label.textContent=fmt(t);timeline.append(label);
+  const label=document.createElement("div");label.className="agenda-hour";label.style.top=(t-start)+"px";label.textContent=fmt(t);timeline.append(label);
  }
- const items=rows.map(a=>({a,from:mins(a.appointment_time),to:mins(a.appointment_time)+(Number(a.duration_minutes)||60)}))
-  .filter(x=>x.to>start&&x.from<end)
-  .sort((x,y)=>x.from-y.from);
- // Pending requests may overlap; split horizontal space so each remains readable.
+ const items=rows.map(a=>{
+  const raw=String(a.appointment_time||"").trim();
+  const match=raw.match(/([0-2]?[0-9]):([0-5][0-9])/);
+  const from=match?Number(match[1])*60+Number(match[2]):NaN;
+  const duration=Number(a.duration_minutes)||Number(schedule.duration)||60;
+  return {a,from,to:from+duration};
+ }).filter(x=>Number.isFinite(x.from)&&x.to>start&&x.from<end).sort((x,y)=>x.from-y.from);
+ // Disposition en colonnes lorsque plusieurs demandes se chevauchent.
  const columns=[];
  for(const item of items){
   let col=columns.findIndex(finish=>finish<=item.from);
@@ -98,18 +105,26 @@ function renderDayAgenda(){
  for(const item of items){
   const top=Math.max(start,item.from),bottom=Math.min(end,item.to);
   const el=document.createElement("div");
-  el.className="agenda-item"+(item.a.status==="pending"?" pending":"");
-  el.style.top=((top-start)*pxPerMinute)+"px";
-  el.style.height=Math.max(12,(bottom-top)*pxPerMinute-2)+"px";
+  el.className="agenda-item"+(String(item.a.status).trim().toLowerCase()==="pending"?" pending":"");
+  el.style.top=(top-start)+"px";el.style.height=Math.max(18,bottom-top-2)+"px";
   el.style.left="calc("+((item.col/colCount)*100)+"% + 8px)";
   el.style.right="calc("+(((colCount-item.col-1)/colCount)*100)+"% + 8px)";
-  const name=document.createElement("strong");name.textContent=fmt(item.from)+"–"+fmt(item.to)+" · "+item.a.customer_name;
-  const detail=document.createElement("small");detail.textContent=item.a.service+" · "+(item.a.status==="accepted"?"Confirmé":"En attente");
-  el.append(name,detail);el.title=item.a.vehicle+" — "+item.a.service;
+  const name=document.createElement("strong");
+  name.textContent=fmt(item.from)+"–"+fmt(item.to)+" · "+(item.a.customer_name||"Client");
+  const detail=document.createElement("small");
+  detail.textContent=(item.a.service||"Prestation")+" · "+(String(item.a.status).trim().toLowerCase()==="accepted"?"Confirmé":"En attente");
+  el.append(name,detail);el.title=(item.a.vehicle||"")+" — "+(item.a.service||"");
   timeline.append(el);
  }
  box.append(timeline);
- if(!items.length){const empty=document.createElement("p");empty.className="agenda-empty";empty.textContent="Aucun rendez-vous confirmé ou en attente ce jour.";box.append(empty)}
+ if(rows.length&&!items.length){
+  const warning=document.createElement("p");warning.className="agenda-empty";
+  warning.textContent="Des rendez-vous existent ce jour, mais leurs heures ne sont pas exploitables dans le planning.";box.append(warning);
+ }
+ if(!rows.length){
+  const empty=document.createElement("p");empty.className="agenda-empty";
+  empty.textContent="Aucun rendez-vous confirmé ou en attente ce jour.";box.append(empty);
+ }
 }
 function renderAppointmentList(dateFilter=""){
  const box=$("appointmentsList");box.replaceChildren();
