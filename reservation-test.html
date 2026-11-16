@@ -37,7 +37,7 @@ async function loadServices(){
   }
   select.disabled=!services.length;
   $("serviceInfo").textContent=services.length?"Tarifs indicatifs du garage. Le rendez-vous reste soumis à validation.":"Aucune prestation disponible pour le moment.";
- }catch(e){select.replaceChildren(new Option("Prestations indisponibles",""));$("serviceInfo").textContent="Impossible de charger les prestations. Réessayez en actualisant la page."}
+ }catch(e){select.replaceChildren(new Option("Choisir une prestation",""));for(const name of ["Vidange","Diagnostic","Freins","Pneumatiques","Révision","Autre intervention"])select.add(new Option(name,name));select.disabled=false;$("serviceInfo").textContent="Les tarifs du garage ne sont pas disponibles actuellement. Vous pouvez tout de même choisir une prestation et envoyer votre demande."}
 }
 loadServices();
 let availabilityRequest=0;
