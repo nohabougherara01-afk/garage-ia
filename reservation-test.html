@@ -3,7 +3,7 @@
 <style>*{box-sizing:border-box}body{margin:0;background:#0a1725;color:#eef7ff;font:16px system-ui}header{background:#14283d;padding:20px}main{max-width:720px;margin:35px auto;padding:0 18px}.card{background:#152b41;border:1px solid #36516c;border-radius:14px;padding:24px}h1{margin-top:0}label{display:block;margin:15px 0 6px}input,select{width:100%;padding:12px;background:#091929;color:#fff;border:1px solid #69839a;border-radius:8px;font:inherit}button{padding:13px 18px;margin-top:22px;border:0;border-radius:9px;background:#4bc9f6;color:#061421;font-weight:700;cursor:pointer}button:disabled{opacity:.6;cursor:wait}.times{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-top:10px}.times button{margin:0;background:#33485c;color:white}.times button.selected{background:#4bc9f6;color:#061421;outline:2px solid #fff}.muted{color:#b6cadb}.warning{color:#ffdfab}#msg{margin-top:15px;white-space:pre-line}a{color:#4bc9f6}</style></head>
 <body><header><strong>🔧 Garage Horizon · Réservation</strong></header><main><div class="card"><h1>Demander un rendez-vous</h1><p class="warning">Version de test : n'utilisez pas de vraies coordonnées personnelles. Le rendez-vous doit être accepté par le garage avant d'être confirmé.</p>
 <form id="booking">
-<label for="service">Prestation</label><select id="service" required disabled><option value="">Chargement des prestations…</option></select><p id="serviceInfo" class="muted" aria-live="polite"></p>
+<label for="service">Prestation</label><select id="service" required><option value="">Choisir une prestation</option><option>Vidange</option><option>Diagnostic</option><option>Freins</option><option>Pneumatiques</option><option>Révision</option><option>Autre intervention</option></select><p id="serviceInfo" class="muted" aria-live="polite"></p>
 <label for="date">Date souhaitée</label><input type="date" id="date" required>
 <label for="time">Horaire souhaité</label><select id="time" required><option value="">Choisissez une date</option></select>
 <div id="timeButtons" class="times" aria-label="Horaires disponibles"></div><label for="name">Nom du client (fictif pour le test)</label><input id="name" maxlength="120" required placeholder="Client Test">
@@ -22,22 +22,37 @@ const minutes=t=>{const [h,m]=t.split(":").map(Number);return h*60+m};
 const fmt=m=>pad(Math.floor(m/60))+":"+pad(m%60);
 const localDate=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 $("date").min=localDate(new Date());
+function setFallbackServices(){
+ const select=$("service");
+ select.replaceChildren(new Option("Choisir une prestation",""));
+ for(const name of ["Vidange","Diagnostic","Freins","Pneumatiques","Révision","Autre intervention"])select.add(new Option(name,name));
+ select.disabled=false;
+}
+setFallbackServices();
 async function loadServices(){
- const select=$("service");select.disabled=true;select.replaceChildren(new Option("Chargement des prestations…",""));
+ const select=$("service");
  try{
   const response=await fetch(API+"/public/services?garage_id="+encodeURIComponent(GARAGE),{cache:"no-store"});
+  if(!response.ok)throw Error("API indisponible");
   const data=await response.json();
-  if(!response.ok)throw Error(data.error||"Prestations indisponibles");
-  select.replaceChildren(new Option("Choisir une prestation",""));
-  const services=Array.isArray(data.services)?data.services:[];
-  for(const s of services){
-   const price=s.price_on_request?"Sur devis":(s.price_cents/100).toLocaleString("fr-FR",{style:"currency",currency:"EUR"});
-   const option=new Option(s.name+" — "+price+" · "+s.duration_minutes+" min",s.name);
-   select.add(option);
+  const services=Array.isArray(data.services)?data.services.filter(s=>s&&typeof s.name==="string"&&s.name.trim()):[];
+  if(!services.length){
+   $("serviceInfo").textContent="Tarifs personnalisés indisponibles : choisissez une prestation classique.";
+   return;
   }
-  select.disabled=!services.length;
-  $("serviceInfo").textContent=services.length?"Tarifs indicatifs du garage. Le rendez-vous reste soumis à validation.":"Aucune prestation disponible pour le moment.";
- }catch(e){select.replaceChildren(new Option("Choisir une prestation",""));for(const name of ["Vidange","Diagnostic","Freins","Pneumatiques","Révision","Autre intervention"])select.add(new Option(name,name));select.disabled=false;$("serviceInfo").textContent="Les tarifs du garage ne sont pas disponibles actuellement. Vous pouvez tout de même choisir une prestation et envoyer votre demande."}
+  const previous=select.value;
+  select.replaceChildren(new Option("Choisir une prestation",""));
+  for(const s of services){
+   const price=s.price_on_request?"Sur devis":(Number(s.price_cents)/100).toLocaleString("fr-FR",{style:"currency",currency:"EUR"});
+   select.add(new Option(s.name+" — "+price+" · "+s.duration_minutes+" min",s.name));
+  }
+  if([...select.options].some(o=>o.value===previous))select.value=previous;
+  select.disabled=false;
+  $("serviceInfo").textContent="Tarifs indicatifs du garage. Le rendez-vous reste soumis à validation.";
+ }catch(e){
+  $("serviceInfo").textContent="Tarifs personnalisés indisponibles : choisissez une prestation classique.";
+  select.disabled=false;
+ }
 }
 loadServices();
 let availabilityRequest=0;
