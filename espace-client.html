@@ -143,15 +143,15 @@ function appointmentRow(a){
  const el=document.createElement("div");el.className="request";
  const line=(label,value)=>{const p=document.createElement("p"),strong=document.createElement("strong");strong.textContent=label+" : ";p.append(strong,document.createTextNode(String(value??"Non renseigné")));el.append(p)};
  line("Client",a.customer_name);line("Téléphone",a.customer_phone);line("E-mail",a.customer_email);line("Véhicule",a.vehicle);line("Prestation",a.service);line("Rendez-vous",a.appointment_date+" à "+a.appointment_time);
- const status={pending:"En attente",accepted:"Accepté",rejected:"Refusé",cancelled:"Annulé"}[a.status]||a.status;line("Statut",status);
+ const status={pending:"En attente",accepted:"Accepté",rejected:"Refusé",cancelled:"Annulé",completed:"Terminée"}[a.status]||a.status;line("Statut",status);
  if(a.status==="pending" || a.status==="accepted"){
   const actions=document.createElement("div");actions.className="request-actions";
-  for(const [value,label,cls] of (a.status==="pending"?[["accepted","Accepter","accept"],["rejected","Refuser","reject"]]:[["cancelled","Annuler le rendez-vous","reject"]])){
+  for(const [value,label,cls] of (a.status==="pending"?[["accepted","Accepter","accept"],["rejected","Refuser","reject"]]:[["completed","Prestation terminée","accept"],["cancelled","Annuler le rendez-vous","reject"]])){
    const b=document.createElement("button");b.textContent=label;b.className=cls;
    b.onclick=async()=>{
-    if(!confirm(value==="cancelled"?"Annuler ce rendez-vous confirmé ? Le créneau redeviendra disponible sauf blocage manuel.":"Voulez-vous "+(value==="accepted"?"accepter":"refuser")+" cette demande ?"))return;
+    if(!confirm(value==="cancelled"?"Annuler ce rendez-vous confirmé ? Le créneau redeviendra disponible sauf blocage manuel.":value==="completed"?"Confirmer que la prestation est terminée ? Un e-mail de notification sera envoyé en mode test.":"Voulez-vous "+(value==="accepted"?"accepter":"refuser")+" cette demande ?"))return;
     for(const x of actions.querySelectorAll("button"))x.disabled=true;
-    try{await api(value==="cancelled"?"/garage/appointments/cancel":"/garage/appointments/status","PUT",value==="cancelled"?{id:a.id}:{id:a.id,status:value});await loadAppointments();await loadBlocks()}
+    try{await api(value==="cancelled"?"/garage/appointments/cancel":value==="completed"?"/garage/appointments/complete":"/garage/appointments/status","PUT",value==="cancelled"||value==="completed"?{id:a.id}:{id:a.id,status:value});await loadAppointments();await loadBlocks()}
     catch(e){$("appointmentsMsg").textContent=e.message;for(const x of actions.querySelectorAll("button"))x.disabled=false}
    };
    actions.append(b);
