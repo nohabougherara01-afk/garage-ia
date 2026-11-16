@@ -31,7 +31,7 @@ async function loadServices(){
  $("serviceInfo").textContent="Chargement des prestations du garage…";
  try{
   const response=await fetch(API+"/public/services?garage_id="+encodeURIComponent(GARAGE),{cache:"no-store"});
-  if(!response.ok)throw Error("API indisponible");
+  if(!response.ok)throw Error("API indisponible ("+response.status+")");
   const data=await response.json();
   const services=Array.isArray(data.services)?data.services.filter(s=>s&&typeof s.name==="string"&&s.name.trim()):[];
   select.replaceChildren(new Option("Choisir une prestation",""));
@@ -41,12 +41,12 @@ async function loadServices(){
   }
   servicesLoaded=services.length>0;
   select.disabled=!servicesLoaded;
-  $("serviceInfo").textContent=servicesLoaded?"Sélectionnez une prestation pour afficher les horaires adaptés à sa durée.":"Aucune prestation active. Le garage doit ajouter une prestation dans son espace professionnel.";
+  $("serviceInfo").textContent=servicesLoaded?"Sélectionnez une prestation pour afficher les horaires adaptés à sa durée.":"Aucune prestation active. Ajoutez une prestation dans l'espace garage.";
  }catch(e){
   servicesLoaded=false;
   select.replaceChildren(new Option("Prestations indisponibles",""));
   select.disabled=true;
-  $("serviceInfo").textContent="Impossible de charger les prestations. Actualisez la page pour réessayer.";
+  $("serviceInfo").textContent="Impossible de charger les prestations : "+e.message;
  }
  loadAvailability();
 }
@@ -56,7 +56,7 @@ async function loadAvailability(){
  select.replaceChildren(new Option("Choisir un horaire",""));
  buttons.replaceChildren();
  select.disabled=true;
- if(!servicesLoaded){$("msg").textContent="Choisissez une prestation disponible.";return}
+ if(!servicesLoaded){$("msg").textContent="Chargement des prestations nécessaire.";return}
  if(!service){$("msg").textContent="Choisissez d'abord une prestation pour voir les horaires.";return}
  if(!date){$("msg").textContent="Choisissez une date.";return}
  if(date<localDate(new Date())){$("msg").textContent="Choisissez une date future.";return}
@@ -65,22 +65,25 @@ async function loadAvailability(){
   const params=new URLSearchParams({garage_id:GARAGE,date,service});
   const res=await fetch(API+"/public/availability?"+params.toString(),{cache:"no-store"});
   const data=await res.json();
-  if(!res.ok)throw Error(data.error||"Disponibilités indisponibles");
+  if(!res.ok)throw Error(data.error||"Erreur serveur "+res.status);
   if(requestId!==availabilityRequest||date!==$("date").value||service!==$("service").value)return;
   const slots=Array.isArray(data.available)?data.available:[];
   for(const time of slots){
-   if(!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(time))continue;
+   if(typeof time!=="string"||!time.includes(":"))continue;
    select.add(new Option(time,time));
    const btn=document.createElement("button");
    btn.type="button";btn.textContent=time;
    btn.onclick=()=>{select.value=time;updateSelected()};
    buttons.append(btn);
   }
-  select.disabled=!buttons.children.length;
-  $("msg").textContent=buttons.children.length?"Choisissez un créneau disponible. Durée prévue : "+data.duration_minutes+" minutes.":"Aucun créneau disponible pour cette date et cette prestation.";
+  select.disabled=buttons.children.length===0;
+  $("msg").textContent=buttons.children.length
+   ?buttons.children.length+" horaires disponibles · "+data.duration_minutes+" min par intervention."
+   :"Aucun créneau disponible pour cette date et cette prestation.";
  }catch(e){
   if(requestId!==availabilityRequest)return;
-  $("msg").textContent="Impossible de vérifier les disponibilités : "+e.message;
+  console.error("Garage Horizon : erreur de disponibilité",e);
+  $("msg").textContent="Erreur de chargement des horaires : "+e.message;
  }
 }
 function updateSelected(){
