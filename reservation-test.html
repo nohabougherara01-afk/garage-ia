@@ -22,75 +22,78 @@ const minutes=t=>{const [h,m]=t.split(":").map(Number);return h*60+m};
 const fmt=m=>pad(Math.floor(m/60))+":"+pad(m%60);
 const localDate=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 $("date").min=localDate(new Date());
-function setFallbackServices(){
- const select=$("service");
- select.replaceChildren(new Option("Choisir une prestation",""));
- for(const name of ["Vidange","Diagnostic","Freins","Pneumatiques","Révision","Autre intervention"])select.add(new Option(name,name));
- select.disabled=false;
-}
-setFallbackServices();
+let availabilityRequest=0;
+let servicesLoaded=false;
 async function loadServices(){
  const select=$("service");
+ select.disabled=true;
+ select.replaceChildren(new Option("Chargement des prestations…",""));
+ $("serviceInfo").textContent="Chargement des prestations du garage…";
  try{
   const response=await fetch(API+"/public/services?garage_id="+encodeURIComponent(GARAGE),{cache:"no-store"});
   if(!response.ok)throw Error("API indisponible");
   const data=await response.json();
   const services=Array.isArray(data.services)?data.services.filter(s=>s&&typeof s.name==="string"&&s.name.trim()):[];
-  if(!services.length){
-   $("serviceInfo").textContent="Tarifs personnalisés indisponibles : choisissez une prestation classique.";
-   return;
-  }
-  const previous=select.value;
   select.replaceChildren(new Option("Choisir une prestation",""));
   for(const s of services){
    const price=s.price_on_request?"Sur devis":(Number(s.price_cents)/100).toLocaleString("fr-FR",{style:"currency",currency:"EUR"});
    select.add(new Option(s.name+" — "+price+" · "+s.duration_minutes+" min",s.name));
   }
-  if([...select.options].some(o=>o.value===previous))select.value=previous;
-  select.disabled=false;
-  $("serviceInfo").textContent="Tarifs indicatifs du garage. Le rendez-vous reste soumis à validation.";
+  servicesLoaded=services.length>0;
+  select.disabled=!servicesLoaded;
+  $("serviceInfo").textContent=servicesLoaded?"Sélectionnez une prestation pour afficher les horaires adaptés à sa durée.":"Aucune prestation active. Le garage doit ajouter une prestation dans son espace professionnel.";
  }catch(e){
-  $("serviceInfo").textContent="Tarifs personnalisés indisponibles : choisissez une prestation classique.";
-  select.disabled=false;
+  servicesLoaded=false;
+  select.replaceChildren(new Option("Prestations indisponibles",""));
+  select.disabled=true;
+  $("serviceInfo").textContent="Impossible de charger les prestations. Actualisez la page pour réessayer.";
  }
+ loadAvailability();
 }
-loadServices();
-let availabilityRequest=0;
 async function loadAvailability(){
- const requestId=++availabilityRequest,date=$("date").value,select=$("time"),buttons=$("timeButtons");
- select.replaceChildren(new Option("Choisir un horaire",""));buttons.replaceChildren();select.disabled=true;
+ const requestId=++availabilityRequest;
+ const date=$("date").value,service=$("service").value,select=$("time"),buttons=$("timeButtons");
+ select.replaceChildren(new Option("Choisir un horaire",""));
+ buttons.replaceChildren();
+ select.disabled=true;
+ if(!servicesLoaded){$("msg").textContent="Choisissez une prestation disponible.";return}
+ if(!service){$("msg").textContent="Choisissez d'abord une prestation pour voir les horaires.";return}
  if(!date){$("msg").textContent="Choisissez une date.";return}
  if(date<localDate(new Date())){$("msg").textContent="Choisissez une date future.";return}
- $("msg").textContent="Vérification des disponibilités…";
+ $("msg").textContent="Recherche des créneaux adaptés à la prestation…";
  try{
-  const res=await fetch(API+"/public/availability?garage_id="+encodeURIComponent(GARAGE)+"&date="+encodeURIComponent(date),{cache:"no-store"});
+  const params=new URLSearchParams({garage_id:GARAGE,date,service});
+  const res=await fetch(API+"/public/availability?"+params.toString(),{cache:"no-store"});
   const data=await res.json();
   if(!res.ok)throw Error(data.error||"Disponibilités indisponibles");
-  if(requestId!==availabilityRequest||date!==$("date").value)return;
+  if(requestId!==availabilityRequest||date!==$("date").value||service!==$("service").value)return;
   const slots=Array.isArray(data.available)?data.available:[];
   for(const time of slots){
-   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))continue;
+   if(!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(time))continue;
    select.add(new Option(time,time));
-   const btn=document.createElement("button");btn.type="button";btn.textContent=time;
-   btn.onclick=()=>{select.value=time;updateSelected()};buttons.append(btn);
+   const btn=document.createElement("button");
+   btn.type="button";btn.textContent=time;
+   btn.onclick=()=>{select.value=time;updateSelected()};
+   buttons.append(btn);
   }
   select.disabled=!buttons.children.length;
-  $("msg").textContent=buttons.children.length?"Choisissez un créneau disponible. Le garage confirmera votre demande.":"Aucun créneau disponible pour cette date.";
+  $("msg").textContent=buttons.children.length?"Choisissez un créneau disponible. Durée prévue : "+data.duration_minutes+" minutes.":"Aucun créneau disponible pour cette date et cette prestation.";
  }catch(e){
   if(requestId!==availabilityRequest)return;
-  $("msg").textContent="Impossible de vérifier les disponibilités pour le moment. Réessayez plus tard.";
+  $("msg").textContent="Impossible de vérifier les disponibilités : "+e.message;
  }
 }
 function updateSelected(){
  for(const b of $("timeButtons").querySelectorAll("button"))b.classList.toggle("selected",b.textContent===$("time").value);
 }
 $("time").addEventListener("change",updateSelected);
+$("service").addEventListener("change",loadAvailability);
 $("date").addEventListener("change",loadAvailability);
 $("date").addEventListener("input",loadAvailability);
 const first=new Date();first.setDate(first.getDate()+1);
 while(first.getDay()===0||first.getDay()===6)first.setDate(first.getDate()+1);
 $("date").value=localDate(first);
-loadAvailability();
+loadServices();
 $("booking").addEventListener("submit",async event=>{
  event.preventDefault();const btn=$("submit");if(!$("time").value||$("time").disabled)return;
  const body={garage_id:GARAGE,customer_name:$("name").value.trim(),customer_email:$("email").value.trim(),customer_phone:$("phone").value.trim(),vehicle:$("vehicle").value.trim(),service:$("service").value,appointment_date:$("date").value,appointment_time:$("time").value};
