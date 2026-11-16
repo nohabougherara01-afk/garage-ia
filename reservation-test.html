@@ -68,6 +68,7 @@ async function loadAvailability(){
   if(!res.ok)throw Error(data.error||"Erreur serveur "+res.status);
   if(requestId!==availabilityRequest||date!==$("date").value||service!==$("service").value)return;
   const slots=Array.isArray(data.available)?data.available:[];
+  $("serviceInfo").textContent="Diagnostic : "+slots.length+" créneaux reçus pour "+service+" le "+date+" (durée "+data.duration_minutes+" min).";
   for(const time of slots){
    if(typeof time!=="string"||!time.includes(":"))continue;
    select.add(new Option(time,time));
@@ -84,6 +85,7 @@ async function loadAvailability(){
   if(requestId!==availabilityRequest)return;
   console.error("Garage Horizon : erreur de disponibilité",e);
   $("msg").textContent="Erreur de chargement des horaires : "+e.message;
+  $("serviceInfo").textContent="Erreur API pour "+service+" le "+date+" : "+e.message;
  }
 }
 function updateSelected(){
